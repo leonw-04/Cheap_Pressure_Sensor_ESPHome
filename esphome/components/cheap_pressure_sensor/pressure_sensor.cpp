@@ -18,17 +18,32 @@ void CheapPressureSensor::setup() {
 }
 
 void CheapPressureSensor::loop() {
+    static uint32_t last_loop_log = 0;
+    if (millis() - last_loop_log > 5000) {
+        ESP_LOGI(TAG, "Heartbeat: Loop is running, waiting_for_response=%d", waiting_for_response_);
+        last_loop_log = millis();
+    }
+
     uint32_t bytes_read = 0;
-    while (available()) {
+    int avail = this->available();
+    if (avail > 0) {
+        ESP_LOGI(TAG, "UART available: %d bytes", avail);
+    }
+
+    while (this->available() > 0) {
         uint8_t byte;
-        if (read_byte(&byte)) {
-            ESP_LOGD(TAG, "UART read: 0x%02X", byte);
+        if (this->read_byte(&byte)) {
+            ESP_LOGI(TAG, "UART read: 0x%02X", byte);
             parser_->feed(byte);
             bytes_read++;
+        } else {
+            ESP_LOGW(TAG, "read_byte failed even though available() was > 0");
+            break;
         }
     }
+    
     if (bytes_read > 0) {
-        ESP_LOGD(TAG, "UART total read: %u bytes", bytes_read);
+        ESP_LOGI(TAG, "UART total read in this loop: %u bytes", bytes_read);
     }
 
     if (waiting_for_response_ && millis() - last_request_time_ > 3000) {
