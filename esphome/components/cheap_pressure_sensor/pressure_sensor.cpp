@@ -18,11 +18,12 @@ void CheapPressureSensor::loop() {
     while (available()) {
         uint8_t byte;
         read_byte(&byte);
+        ESP_LOGD(TAG, "UART Byte: 0x%02X", byte);
         parser_->feed(byte);
         bytes_read++;
     }
     if (bytes_read > 0) {
-        ESP_LOGD(TAG, "Read %u bytes from UART", bytes_read);
+        ESP_LOGD(TAG, "Total read in this loop: %u bytes", bytes_read);
     }
 
     if (waiting_for_response_ && millis() - last_request_time_ > 2000) {

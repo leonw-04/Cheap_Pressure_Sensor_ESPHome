@@ -7,6 +7,7 @@ namespace cheap_pressure_sensor {
 static const char *const TAG = "cheap_pressure_sensor.parser";
 
 void ModbusParser::feed(uint8_t byte) {
+    // ESP_LOGD(TAG, "Parser received byte: 0x%02X", byte); // Zu viel Output, da wir es schon in loop() loggen
     buffer_.push_back(byte);
     process_buffer();
 }
@@ -17,12 +18,12 @@ void ModbusParser::feed(const uint8_t* data, size_t len) {
 }
 
 void ModbusParser::process_buffer() {
-    // ESP_LOGVV(TAG, "Processing buffer, size: %zu", buffer_.size());
+    // ESP_LOGD(TAG, "Processing buffer, size: %zu", buffer_.size());
     // Ein Modbus RTU Frame hat mindestens 5 Bytes: Addr(1) + FC(1) + Data(min 1) + CRC(2)
     while (buffer_.size() >= 5) {
         // Sliding window: Suche nach slave_id an Position 0
         if (buffer_[0] != slave_id_) {
-            // ESP_LOGVV(TAG, "Byte 0x%02X is not slave_id 0x%02X, skipping", buffer_[0], slave_id_);
+            ESP_LOGD(TAG, "Skipping noise byte: 0x%02X", buffer_[0]);
             buffer_.erase(buffer_.begin());
             continue;
         }
@@ -34,7 +35,7 @@ void ModbusParser::process_buffer() {
 
         if (fc != 0x03 && fc != 0x04 && fc != 0x06 && fc != 0x10 &&
             base_fc != 0x03 && base_fc != 0x04 && base_fc != 0x06 && base_fc != 0x10) {
-            // ESP_LOGVV(TAG, "Found slave_id but invalid FC: 0x%02X", fc);
+            ESP_LOGD(TAG, "Found slave_id but invalid FC: 0x%02X. Skipping slave_id byte.", fc);
             buffer_.erase(buffer_.begin());
             continue;
         }
@@ -60,7 +61,7 @@ void ModbusParser::process_buffer() {
 
         // Haben wir genug Bytes für diesen Frame-Typ?
         if (buffer_.size() < expected_len) {
-            // ESP_LOGVV(TAG, "Wait for more bytes. Have %zu, need %zu", buffer_.size(), expected_len);
+            ESP_LOGD(TAG, "Waiting for more bytes. Have %zu, need %zu", buffer_.size(), expected_len);
             break;
         }
 
