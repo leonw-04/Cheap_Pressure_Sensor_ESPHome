@@ -8,6 +8,9 @@ static const char *const TAG = "cheap_pressure_sensor";
 
 void CheapPressureSensor::setup() {
     ESP_LOGCONFIG(TAG, "Setting up Cheap Pressure Sensor with Slave ID %u...", slave_id_);
+    if (this->parent_ == nullptr) {
+        ESP_LOGE(TAG, "UART Parent is NULL! Check your configuration.");
+    }
     parser_ = make_unique<ModbusParser>(slave_id_, [this](const ModbusFrame& frame) {
         this->on_frame(frame);
     });
@@ -17,17 +20,18 @@ void CheapPressureSensor::loop() {
     uint32_t bytes_read = 0;
     while (available()) {
         uint8_t byte;
-        read_byte(&byte);
-        ESP_LOGD(TAG, "UART Byte: 0x%02X", byte);
-        parser_->feed(byte);
-        bytes_read++;
+        if (read_byte(&byte)) {
+            ESP_LOGI(TAG, "UART Byte read: 0x%02X", byte);
+            parser_->feed(byte);
+            bytes_read++;
+        }
     }
     if (bytes_read > 0) {
-        ESP_LOGD(TAG, "Total read in this loop: %u bytes", bytes_read);
+        ESP_LOGI(TAG, "Total read in this loop: %u bytes", bytes_read);
     }
 
-    if (waiting_for_response_ && millis() - last_request_time_ > 2000) {
-        ESP_LOGW(TAG, "Timed out waiting for response from slave %u", slave_id_);
+    if (waiting_for_response_ && millis() - last_request_time_ > 3000) {
+        ESP_LOGW(TAG, "Timed out waiting for response from slave %u (Last request %u ms ago)", slave_id_, (uint32_t)(millis() - last_request_time_));
         waiting_for_response_ = false;
     }
 }
@@ -84,7 +88,7 @@ void CheapPressureSensor::on_frame(const ModbusFrame& frame) {
             data.b[1] = frame.data[2]; // C
             data.b[0] = frame.data[3]; // D
             
-            ESP_LOGD(TAG, "Received PV Float: %.3f", data.f);
+            ESP_LOGI(TAG, "Received PV Float: %.3f", data.f);
             if (pressure_sensor_ != nullptr) {
                 pressure_sensor_->publish_state(data.f);
             }

@@ -18,12 +18,14 @@ void ModbusParser::feed(const uint8_t* data, size_t len) {
 }
 
 void ModbusParser::process_buffer() {
-    // ESP_LOGD(TAG, "Processing buffer, size: %zu", buffer_.size());
+    if (!buffer_.empty()) {
+        ESP_LOGV(TAG, "Processing buffer, size: %zu", buffer_.size());
+    }
     // Ein Modbus RTU Frame hat mindestens 5 Bytes: Addr(1) + FC(1) + Data(min 1) + CRC(2)
     while (buffer_.size() >= 5) {
         // Sliding window: Suche nach slave_id an Position 0
         if (buffer_[0] != slave_id_) {
-            ESP_LOGD(TAG, "Skipping noise byte: 0x%02X", buffer_[0]);
+            ESP_LOGI(TAG, "Skipping noise byte: 0x%02X", buffer_[0]);
             buffer_.erase(buffer_.begin());
             continue;
         }
@@ -35,7 +37,7 @@ void ModbusParser::process_buffer() {
 
         if (fc != 0x03 && fc != 0x04 && fc != 0x06 && fc != 0x10 &&
             base_fc != 0x03 && base_fc != 0x04 && base_fc != 0x06 && base_fc != 0x10) {
-            ESP_LOGD(TAG, "Found slave_id but invalid FC: 0x%02X. Skipping slave_id byte.", fc);
+            ESP_LOGI(TAG, "Found slave_id 0x%02X but invalid FC: 0x%02X. Skipping.", buffer_[0], fc);
             buffer_.erase(buffer_.begin());
             continue;
         }
@@ -61,7 +63,7 @@ void ModbusParser::process_buffer() {
 
         // Haben wir genug Bytes für diesen Frame-Typ?
         if (buffer_.size() < expected_len) {
-            ESP_LOGD(TAG, "Waiting for more bytes. Have %zu, need %zu", buffer_.size(), expected_len);
+            ESP_LOGI(TAG, "Frame candidate (FC=0x%02X) needs %zu bytes, have %zu. Waiting...", fc, expected_len, buffer_.size());
             break;
         }
 
@@ -70,7 +72,7 @@ void ModbusParser::process_buffer() {
         uint16_t calculated_crc = calculate_crc(buffer_.data(), expected_len - 2);
 
         if (received_crc == calculated_crc) {
-            ESP_LOGD(TAG, "Valid Modbus frame received (FC=0x%02X, len=%zu)", fc, expected_len);
+            ESP_LOGI(TAG, "Valid Modbus frame received (FC=0x%02X, len=%zu)", fc, expected_len);
             ModbusFrame frame;
             frame.slave_id = buffer_[0];
             frame.function_code = buffer_[1];
@@ -88,7 +90,7 @@ void ModbusParser::process_buffer() {
             // Frame verarbeitet, aus Buffer löschen
             buffer_.erase(buffer_.begin(), buffer_.begin() + expected_len);
         } else {
-            ESP_LOGD(TAG, "CRC Check failed! Received: 0x%04X, Calculated: 0x%04X", received_crc, calculated_crc);
+            ESP_LOGW(TAG, "CRC Check failed for candidate! Received: 0x%04X, Calculated: 0x%04X", received_crc, calculated_crc);
             // CRC falsch. Vielleicht war das erste Byte zufällig die Slave ID.
             // Wir löschen das erste Byte und suchen weiter.
             buffer_.erase(buffer_.begin());
