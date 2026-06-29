@@ -1,0 +1,35 @@
+esphome:
+  name: pressure-sensor-node
+
+esp32:
+  board: esp32dev
+
+# Einbinden der externen Komponente
+external_components:
+  - source:
+      type: local
+      path: esphome/components
+
+# UART Konfiguration für Modbus (RS485)
+uart:
+  id: modbus_uart
+  tx_pin: GPIO17
+  rx_pin: GPIO16
+  baud_rate: 9600
+  stop_bits: 1
+
+# Die neue Komponente
+cheap_pressure_sensor:
+  id: my_pressure_sensor
+  uart_id: modbus_uart
+  slave_id: 1
+  update_interval: 10s
+
+# Der Sensor
+sensor:
+  - platform: cheap_pressure_sensor
+    cheap_pressure_sensor_id: my_pressure_sensor
+    pressure:
+      name: "Current Pressure"
+      unit_of_measurement: "bar"
+      accuracy_decimals: 3
