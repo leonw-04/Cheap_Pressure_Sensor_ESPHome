@@ -4,10 +4,10 @@
 namespace esphome {
 namespace cheap_pressure_sensor {
 
-static const char *const TAG = "cheap_pressure_sensor.parser";
+static const char *const TAG = "cheap_pressure_sensor";
 
 void ModbusParser::feed(uint8_t byte) {
-    // ESP_LOGD(TAG, "Parser received byte: 0x%02X", byte); // Zu viel Output, da wir es schon in loop() loggen
+    ESP_LOGVV(TAG, "Parser feed: 0x%02X", byte);
     buffer_.push_back(byte);
     process_buffer();
 }
@@ -19,25 +19,26 @@ void ModbusParser::feed(const uint8_t* data, size_t len) {
 
 void ModbusParser::process_buffer() {
     if (!buffer_.empty()) {
-        ESP_LOGV(TAG, "Processing buffer, size: %zu", buffer_.size());
+        ESP_LOGVV(TAG, "Process buffer, size: %zu", buffer_.size());
     }
     // Ein Modbus RTU Frame hat mindestens 5 Bytes: Addr(1) + FC(1) + Data(min 1) + CRC(2)
     while (buffer_.size() >= 5) {
         // Sliding window: Suche nach slave_id an Position 0
         if (buffer_[0] != slave_id_) {
-            ESP_LOGI(TAG, "Skipping noise byte: 0x%02X", buffer_[0]);
+            ESP_LOGD(TAG, "Parser: skipping 0x%02X (not slave_id 0x%02X)", buffer_[0], slave_id_);
             buffer_.erase(buffer_.begin());
             continue;
         }
 
         uint8_t fc = buffer_[1];
+        ESP_LOGD(TAG, "Parser: found slave_id 0x%02X, FC=0x%02X", buffer_[0], fc);
         // Erlaubte Function Codes laut Issue + Exception Codes (FC | 0x80)
         bool is_exception = (fc & 0x80) != 0;
         uint8_t base_fc = fc & 0x7F;
 
         if (fc != 0x03 && fc != 0x04 && fc != 0x06 && fc != 0x10 &&
             base_fc != 0x03 && base_fc != 0x04 && base_fc != 0x06 && base_fc != 0x10) {
-            ESP_LOGI(TAG, "Found slave_id 0x%02X but invalid FC: 0x%02X. Skipping.", buffer_[0], fc);
+            ESP_LOGD(TAG, "Parser: invalid FC 0x%02X, skipping slave_id byte", fc);
             buffer_.erase(buffer_.begin());
             continue;
         }
@@ -48,7 +49,10 @@ void ModbusParser::process_buffer() {
             expected_len = 5;
         } else if (fc == 0x03 || fc == 0x04) {
             // Read: Addr(1) + FC(1) + ByteCount(1) + Data(N) + CRC(2)
-            if (buffer_.size() < 3) break; // Brauchen ByteCount
+            if (buffer_.size() < 3) {
+                ESP_LOGVV(TAG, "Parser: wait for byte count");
+                break; // Brauchen ByteCount
+            }
             uint8_t byte_count = buffer_[2];
             expected_len = 5 + byte_count;
         } else if (fc == 0x06) {
@@ -56,14 +60,17 @@ void ModbusParser::process_buffer() {
             expected_len = 8;
         } else if (fc == 0x10) {
             // Write Multiple: Addr(1) + FC(1) + RegAddr(2) + RegCount(2) + ByteCount(1) + Data(N) + CRC(2)
-            if (buffer_.size() < 7) break; // Brauchen ByteCount
+            if (buffer_.size() < 7) {
+                ESP_LOGVV(TAG, "Parser: wait for write byte count");
+                break; // Brauchen ByteCount
+            }
             uint8_t byte_count = buffer_[6];
             expected_len = 9 + byte_count;
         }
 
         // Haben wir genug Bytes für diesen Frame-Typ?
         if (buffer_.size() < expected_len) {
-            ESP_LOGI(TAG, "Frame candidate (FC=0x%02X) needs %zu bytes, have %zu. Waiting...", fc, expected_len, buffer_.size());
+            ESP_LOGD(TAG, "Parser: frame candidate (FC=0x%02X) needs %zu bytes, have %zu. Waiting...", fc, expected_len, buffer_.size());
             break;
         }
 
@@ -72,7 +79,7 @@ void ModbusParser::process_buffer() {
         uint16_t calculated_crc = calculate_crc(buffer_.data(), expected_len - 2);
 
         if (received_crc == calculated_crc) {
-            ESP_LOGI(TAG, "Valid Modbus frame received (FC=0x%02X, len=%zu)", fc, expected_len);
+            ESP_LOGD(TAG, "Parser: valid Modbus frame received (FC=0x%02X, len=%zu)", fc, expected_len);
             ModbusFrame frame;
             frame.slave_id = buffer_[0];
             frame.function_code = buffer_[1];
@@ -90,7 +97,7 @@ void ModbusParser::process_buffer() {
             // Frame verarbeitet, aus Buffer löschen
             buffer_.erase(buffer_.begin(), buffer_.begin() + expected_len);
         } else {
-            ESP_LOGW(TAG, "CRC Check failed for candidate! Received: 0x%04X, Calculated: 0x%04X", received_crc, calculated_crc);
+            ESP_LOGW(TAG, "Parser: CRC Check failed! Received: 0x%04X, Calculated: 0x%04X", received_crc, calculated_crc);
             // CRC falsch. Vielleicht war das erste Byte zufällig die Slave ID.
             // Wir löschen das erste Byte und suchen weiter.
             buffer_.erase(buffer_.begin());
