@@ -1,7 +1,10 @@
 #include "modbus_parser.h"
+#include "esphome/core/log.h"
 
 namespace esphome {
 namespace cheap_pressure_sensor {
+
+static const char *const TAG = "cheap_pressure_sensor.parser";
 
 void ModbusParser::feed(uint8_t byte) {
     buffer_.push_back(byte);
@@ -14,23 +17,33 @@ void ModbusParser::feed(const uint8_t* data, size_t len) {
 }
 
 void ModbusParser::process_buffer() {
+    // ESP_LOGVV(TAG, "Processing buffer, size: %zu", buffer_.size());
     // Ein Modbus RTU Frame hat mindestens 5 Bytes: Addr(1) + FC(1) + Data(min 1) + CRC(2)
     while (buffer_.size() >= 5) {
         // Sliding window: Suche nach slave_id an Position 0
         if (buffer_[0] != slave_id_) {
+            // ESP_LOGVV(TAG, "Byte 0x%02X is not slave_id 0x%02X, skipping", buffer_[0], slave_id_);
             buffer_.erase(buffer_.begin());
             continue;
         }
 
         uint8_t fc = buffer_[1];
-        // Erlaubte Function Codes laut Issue
-        if (fc != 0x03 && fc != 0x04 && fc != 0x06 && fc != 0x10) {
+        // Erlaubte Function Codes laut Issue + Exception Codes (FC | 0x80)
+        bool is_exception = (fc & 0x80) != 0;
+        uint8_t base_fc = fc & 0x7F;
+
+        if (fc != 0x03 && fc != 0x04 && fc != 0x06 && fc != 0x10 &&
+            base_fc != 0x03 && base_fc != 0x04 && base_fc != 0x06 && base_fc != 0x10) {
+            // ESP_LOGVV(TAG, "Found slave_id but invalid FC: 0x%02X", fc);
             buffer_.erase(buffer_.begin());
             continue;
         }
 
         size_t expected_len = 0;
-        if (fc == 0x03 || fc == 0x04) {
+        if (is_exception) {
+            // Exception: Addr(1) + FC|80(1) + ErrorCode(1) + CRC(2)
+            expected_len = 5;
+        } else if (fc == 0x03 || fc == 0x04) {
             // Read: Addr(1) + FC(1) + ByteCount(1) + Data(N) + CRC(2)
             if (buffer_.size() < 3) break; // Brauchen ByteCount
             uint8_t byte_count = buffer_[2];
@@ -46,13 +59,17 @@ void ModbusParser::process_buffer() {
         }
 
         // Haben wir genug Bytes für diesen Frame-Typ?
-        if (buffer_.size() < expected_len) break;
+        if (buffer_.size() < expected_len) {
+            // ESP_LOGVV(TAG, "Wait for more bytes. Have %zu, need %zu", buffer_.size(), expected_len);
+            break;
+        }
 
         // CRC Prüfung (Little Endian bei Modbus RTU)
         uint16_t received_crc = (static_cast<uint16_t>(buffer_[expected_len - 1]) << 8) | buffer_[expected_len - 2];
         uint16_t calculated_crc = calculate_crc(buffer_.data(), expected_len - 2);
 
         if (received_crc == calculated_crc) {
+            ESP_LOGD(TAG, "Valid Modbus frame received (FC=0x%02X, len=%zu)", fc, expected_len);
             ModbusFrame frame;
             frame.slave_id = buffer_[0];
             frame.function_code = buffer_[1];
@@ -70,6 +87,7 @@ void ModbusParser::process_buffer() {
             // Frame verarbeitet, aus Buffer löschen
             buffer_.erase(buffer_.begin(), buffer_.begin() + expected_len);
         } else {
+            ESP_LOGD(TAG, "CRC Check failed! Received: 0x%04X, Calculated: 0x%04X", received_crc, calculated_crc);
             // CRC falsch. Vielleicht war das erste Byte zufällig die Slave ID.
             // Wir löschen das erste Byte und suchen weiter.
             buffer_.erase(buffer_.begin());

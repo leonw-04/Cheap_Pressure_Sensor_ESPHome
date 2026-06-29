@@ -7,17 +7,22 @@ namespace cheap_pressure_sensor {
 static const char *const TAG = "cheap_pressure_sensor";
 
 void CheapPressureSensor::setup() {
-    ESP_LOGCONFIG(TAG, "Setting up Cheap Pressure Sensor...");
+    ESP_LOGCONFIG(TAG, "Setting up Cheap Pressure Sensor with Slave ID %u...", slave_id_);
     parser_ = make_unique<ModbusParser>(slave_id_, [this](const ModbusFrame& frame) {
         this->on_frame(frame);
     });
 }
 
 void CheapPressureSensor::loop() {
+    uint32_t bytes_read = 0;
     while (available()) {
         uint8_t byte;
         read_byte(&byte);
         parser_->feed(byte);
+        bytes_read++;
+    }
+    if (bytes_read > 0) {
+        ESP_LOGD(TAG, "Read %u bytes from UART", bytes_read);
     }
 
     if (waiting_for_response_ && millis() - last_request_time_ > 2000) {
@@ -54,6 +59,12 @@ void CheapPressureSensor::send_read_command(uint16_t start_address, uint16_t num
 void CheapPressureSensor::on_frame(const ModbusFrame& frame) {
     waiting_for_response_ = false;
     
+    if ((frame.function_code & 0x80) != 0) {
+        ESP_LOGW(TAG, "Modbus Exception from slave %u: FC=0x%02X, Error=0x%02X", 
+                 frame.slave_id, frame.function_code, frame.data[0]);
+        return;
+    }
+
     // Wir erwarten eine Antwort auf unsere Read-Anfrage (FC 0x03)
     if (frame.function_code == 0x03) {
         if (frame.data.size() == 4) {
