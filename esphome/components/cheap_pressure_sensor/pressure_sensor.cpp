@@ -30,7 +30,7 @@ void CheapPressureSensor::loop() {
         ESP_LOGI(TAG, "UART available: %d bytes", avail);
     }
 
-    while (true) // this->available() > 0) {
+    while (true) {// this->available() > 0) {
         uint8_t byte;
         if (this->read_byte(&byte)) {
             ESP_LOGI(TAG, "UART read: 0x%02X", byte);
