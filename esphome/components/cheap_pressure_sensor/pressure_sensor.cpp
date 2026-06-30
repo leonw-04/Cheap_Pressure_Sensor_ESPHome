@@ -18,16 +18,14 @@ void CheapPressureSensor::setup() {
 }
 
 void CheapPressureSensor::loop() {
-    uint32_t bytes_read = 0;
     uint8_t byte;
-    while (this->read_byte(&byte)) {
-        ESP_LOGV(TAG, "UART read: 0x%02X", byte);
-        parser_->feed(byte);
-        bytes_read++;
-    }
-    
-    if (bytes_read > 0) {
-        ESP_LOGD(TAG, "UART total read in this loop: %u bytes", bytes_read);
+    while (this->available()) {
+        if (this->read_byte(&byte)) {
+            ESP_LOGV(TAG, "UART read: 0x%02X", byte);
+            parser_->feed(byte);
+        } else {
+            break;
+        }
     }
 
     if (waiting_for_response_ && millis() - last_request_time_ > 3000) {
@@ -39,6 +37,7 @@ void CheapPressureSensor::loop() {
 void CheapPressureSensor::update() {
     // Abfrage des PV Float Werts (Register 0x0016, Länge 2 Words = 4 Bytes)
     // Wir nutzen FC 0x03 (Read Holding Registers)
+    ESP_LOGD(TAG, "Updating sensor, sending read command...");
     send_read_command(REG_PV_FLOAT, 2);
 }
 
@@ -58,7 +57,7 @@ void CheapPressureSensor::send_read_command(uint16_t start_address, uint16_t num
     write_array(frame, 8);
     last_request_time_ = millis();
     waiting_for_response_ = true;
-    ESP_LOGV(TAG, "Sent read command for address 0x%04X", start_address);
+    ESP_LOGD(TAG, "Sent read command for address 0x%04X", start_address);
 }
 
 void CheapPressureSensor::on_frame(const ModbusFrame& frame) {

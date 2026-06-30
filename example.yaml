@@ -17,6 +17,7 @@ uart:
   rx_pin: GPIO16
   baud_rate: 9600
   stop_bits: 1
+  rx_buffer_size: 256
 
 # Die neue Komponente
 cheap_pressure_sensor:
