@@ -18,32 +18,16 @@ void CheapPressureSensor::setup() {
 }
 
 void CheapPressureSensor::loop() {
-    static uint32_t last_loop_log = 0;
-    if (millis() - last_loop_log > 5000) {
-        ESP_LOGI(TAG, "Heartbeat: Loop is running, waiting_for_response=%d", waiting_for_response_);
-        last_loop_log = millis();
-    }
-
     uint32_t bytes_read = 0;
-    int avail = this->available();
-    if (avail > 0) {
-        ESP_LOGI(TAG, "UART available: %d bytes", avail);
-    }
-
-    while (true) {// this->available() > 0) {
-        uint8_t byte;
-        if (this->read_byte(&byte)) {
-            ESP_LOGI(TAG, "UART read: 0x%02X", byte);
-            parser_->feed(byte);
-            bytes_read++;
-        } else {
-            ESP_LOGW(TAG, "read_byte failed even though available() was > 0");
-            break;
-        }
+    uint8_t byte;
+    while (this->read_byte(&byte)) {
+        ESP_LOGV(TAG, "UART read: 0x%02X", byte);
+        parser_->feed(byte);
+        bytes_read++;
     }
     
     if (bytes_read > 0) {
-        ESP_LOGI(TAG, "UART total read in this loop: %u bytes", bytes_read);
+        ESP_LOGD(TAG, "UART total read in this loop: %u bytes", bytes_read);
     }
 
     if (waiting_for_response_ && millis() - last_request_time_ > 3000) {
@@ -104,7 +88,7 @@ void CheapPressureSensor::on_frame(const ModbusFrame& frame) {
             data.b[1] = frame.data[2]; // C
             data.b[0] = frame.data[3]; // D
             
-            ESP_LOGD(TAG, "Received PV Float: %.3f", data.f);
+            ESP_LOGI(TAG, "Received PV Float: %.3f", data.f);
             if (pressure_sensor_ != nullptr) {
                 pressure_sensor_->publish_state(data.f);
             }

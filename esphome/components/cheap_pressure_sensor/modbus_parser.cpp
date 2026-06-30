@@ -25,20 +25,20 @@ void ModbusParser::process_buffer() {
     while (buffer_.size() >= 5) {
         // Sliding window: Suche nach slave_id an Position 0
         if (buffer_[0] != slave_id_) {
-            ESP_LOGI(TAG, "Parser: skipping noise byte 0x%02X (waiting for 0x%02X)", buffer_[0], slave_id_);
+            ESP_LOGD(TAG, "Parser: skipping noise byte 0x%02X (waiting for 0x%02X)", buffer_[0], slave_id_);
             buffer_.erase(buffer_.begin());
             continue;
         }
 
         uint8_t fc = buffer_[1];
-        ESP_LOGI(TAG, "Parser: found slave_id 0x%02X, FC=0x%02X candidate", buffer_[0], fc);
+        ESP_LOGD(TAG, "Parser: found slave_id 0x%02X, FC=0x%02X candidate", buffer_[0], fc);
         // Erlaubte Function Codes laut Issue + Exception Codes (FC | 0x80)
         bool is_exception = (fc & 0x80) != 0;
         uint8_t base_fc = fc & 0x7F;
 
         if (fc != 0x03 && fc != 0x04 && fc != 0x06 && fc != 0x10 &&
             base_fc != 0x03 && base_fc != 0x04 && base_fc != 0x06 && base_fc != 0x10) {
-            ESP_LOGI(TAG, "Parser: invalid FC 0x%02X for candidate, skipping slave_id byte", fc);
+            ESP_LOGD(TAG, "Parser: invalid FC 0x%02X for candidate, skipping slave_id byte", fc);
             buffer_.erase(buffer_.begin());
             continue;
         }
@@ -49,7 +49,7 @@ void ModbusParser::process_buffer() {
             expected_len = 5;
         } else if (fc == 0x03 || fc == 0x04) {
             if (buffer_.size() < 3) {
-                ESP_LOGI(TAG, "Parser: wait for byte count byte");
+                ESP_LOGVV(TAG, "Parser: wait for byte count byte");
                 break;
             }
             uint8_t byte_count = buffer_[2];
@@ -58,7 +58,7 @@ void ModbusParser::process_buffer() {
             expected_len = 8;
         } else if (fc == 0x10) {
             if (buffer_.size() < 7) {
-                ESP_LOGI(TAG, "Parser: wait for write byte count byte");
+                ESP_LOGVV(TAG, "Parser: wait for write byte count byte");
                 break;
             }
             uint8_t byte_count = buffer_[6];
@@ -67,7 +67,7 @@ void ModbusParser::process_buffer() {
 
         // Haben wir genug Bytes für diesen Frame-Typ?
         if (buffer_.size() < expected_len) {
-            ESP_LOGI(TAG, "Parser: frame candidate (FC=0x%02X) needs %zu bytes, have %zu. Waiting...", fc, expected_len, buffer_.size());
+            ESP_LOGD(TAG, "Parser: frame candidate (FC=0x%02X) needs %zu bytes, have %zu. Waiting...", fc, expected_len, buffer_.size());
             break;
         }
 
@@ -76,7 +76,7 @@ void ModbusParser::process_buffer() {
         uint16_t calculated_crc = calculate_crc(buffer_.data(), expected_len - 2);
 
         if (received_crc == calculated_crc) {
-            ESP_LOGI(TAG, "Parser: VALID Modbus frame received (FC=0x%02X, len=%zu)", fc, expected_len);
+            ESP_LOGD(TAG, "Parser: VALID Modbus frame received (FC=0x%02X, len=%zu)", fc, expected_len);
             // ... (rest)
             ModbusFrame frame;
             frame.slave_id = buffer_[0];
