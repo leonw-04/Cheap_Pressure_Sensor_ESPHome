@@ -4,7 +4,7 @@ from esphome.components import uart
 from esphome.const import CONF_ID
 
 DEPENDENCIES = ['uart']
-AUTO_LOAD = ['sensor']
+AUTO_LOAD = ['sensor', 'text_sensor']
 
 cheap_pressure_sensor_ns = cg.esphome_ns.namespace('cheap_pressure_sensor')
 CheapPressureSensor = cheap_pressure_sensor_ns.class_('CheapPressureSensor', cg.PollingComponent, uart.UARTDevice)
