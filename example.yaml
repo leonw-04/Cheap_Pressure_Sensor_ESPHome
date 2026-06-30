@@ -31,6 +31,16 @@ sensor:
   - platform: cheap_pressure_sensor
     cheap_pressure_sensor_id: my_pressure_sensor
     pressure:
-      name: "Current Pressure"
-      unit_of_measurement: "bar"
-      accuracy_decimals: 3
+        name: "Current Pressure"
+        unit_of_measurement: "bar"
+        accuracy_decimals: 3
+    unit:
+        name: "Pressure Sensor Unit ID"
+    decimal_places:
+        name: "Pressure Sensor Decimal Places"
+
+text_sensor:
+  - platform: cheap_pressure_sensor
+    cheap_pressure_sensor_id: my_pressure_sensor
+    unit_text:
+        name: "Pressure Sensor Unit"
